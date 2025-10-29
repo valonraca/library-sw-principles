@@ -56,5 +56,32 @@ const service = new LibraryService(bookRepo, memberRepo, notifier, payment);
     } catch (e) { alert(e.message); }
   };
 
+  // ✅ SEED DEMO DATA — flexible, works for any book/author
+  $('#seed').onclick = () => {
+    const existing = bookRepo.getAll();
+
+    // If the user already typed something, use that as a base
+    const title = $('#title').value || 'Book ' + (existing.length + 1);
+    const author = $('#author').value || 'Author ' + (existing.length + 1);
+    const id = $('#id').value || 'B' + (Math.random().toString(36).slice(2, 6));
+
+    // Add book to repository
+    existing.push({ id, title, author, available: true });
+    bookRepo.saveAll(existing);
+
+    renderInventory();
+    alert(`Seeded: ${title} by ${author}`);
+  };
+
+  
+  $('#reset').onclick = () => {
+    if (confirm('Are you sure you want to reset all data?')) {
+      bookRepo.clear();
+      memberRepo.clear();
+      renderInventory();
+      alert('All data cleared!');
+    }
+  };
+
   renderInventory();
 })();
