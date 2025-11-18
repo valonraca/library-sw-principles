@@ -1,35 +1,31 @@
-# LibraryApp (Broken) — Refactor Exercise
+## Pascal's Rationale
 
-**Goal:** Apply SRP (Single Responsibility Principle) and OCP (Open/Closed Principle) to this tiny browser-only app.
-You will refactor *one or two classes/modules* and submit **diffs + rationale**.
+### SRP: Clear Responsibilities
+- Split the former “god” `Library` object into `LibraryService` (domain rules only) and `LibraryUI` (DOM wiring, inputs, rendering, alerts).
+- Introduced adapters—`LocalStorageBookRepo`, `LocalStorageMemberRepo`, `LocalStorageGateway`—so persistence happens outside the domain layer.
+- Result: policy changes no longer require touching UI or storage code; each class does one job.
 
-## How to Run
-- Open `index.html` in a browser.
-  
-## What’s Intentionally Wrong (spot at least 4)
-- **God Object**: `Library` handles domain rules, persistence (localStorage), UI rendering (DOM), payments, and emails.
-- **Tight Coupling**: Payment and email are *hard-coded* inside `Library`.
-- **UI in Domain**: Domain methods call `render*` and `alert` directly.
-- **No Extension Points**: Changing payment/email requires editing `Library` (violates OCP).
-- **Global Mutable State**: Single `Library` object used everywhere.
+### OCP: Extension Points
+- `LibraryService` depends on narrow ports (`paymentProvider.charge`, `notifier.send`, repo load/save methods) injected via the `createService` bootstrap in `app.js`.
+- Concrete adapters (`FakePaymentProvider`, `ConsoleNotifier`, `LocalStorageBookRepo`, `LocalStorageMemberRepo`) live only in the wiring layer, keeping the domain closed for modification yet open to new implementations.
 
-## Your Task (minimum)
-1. **SRP Split**: Extract a `LibraryService` that contains only domain rules — no DOM, no `alert`, no storage.
-2. **OCP Ports**: Define tiny interfaces (plain JS objects) for `notifier` and `payment` and **inject** them.
-3. Storage access should happen via a `BookRepo` and `MemberRepo` abstraction (e.g., backed by localStorage).
+### Swapping Providers
+Adding a real payment provider—or notifier—is just an injection change:
 
-## Deliverables
-- **Git diffs** (or a `patch` file) showing your changes.
-- A short **rationale** (200–400 words) explaining:
-  - What responsibilities you moved and why (SRP).
-  - Where/why you introduced extension points (OCP).
-  - How your design allows adding a new payment provider (or notifier) **without** changing `LibraryService`.
+```
+const paymentProvider = new RealStripeProvider(realStripeClient);
+const notifier = new PostmarkNotifier(apiKey);
 
-## Acceptance Check
-- Domain rules run without touching the DOM.
-- Swapping `payment` or `notifier` requires changing only wiring, not domain logic.
-- Basic flows still work in the browser (add/register/checkout/search).
+const service = new LibraryService({
+  bookRepo,
+  memberRepo,
+  paymentProvider,
+  notifier
+});
+```
 
-## Nice-to-have (optional)
-- Basic error objects instead of `alert`.
-- Unit-ish tests using plain functions in the console.
+`LibraryService.checkoutBook` still calls `this.paymentProvider.charge` and `this.notifier.send` without knowing about the concrete classes, so no domain changes are needed. The same swap-friendly approach applies to storage backends.
+
+### Testing
+- Open `index.html` in a browser, then run plain test functions from the console: `testAddBook()`, `testRegisterMember()`, `testCheckoutBook()`.
+- Each test creates isolated `LibraryService` instances with in-memory repos and stubbed adapters, verifying domain logic without touching the UI or localStorage.
