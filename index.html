@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>LibraryApp (Broken)</title>
+    <title>LibraryApp (Fixed)</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
       .row { display: flex; gap: 12px; margin-bottom: 8px; }
@@ -18,8 +18,8 @@
   </head>
   <body>
     
-    <h1>LibraryApp (BROKEN)</h1>
-    <p class="muted">A tiny app that <strong>violates SOLID</strong> on purpose. Use it to refactor with SRP & OCP.</p>
+    <h1>LibraryApp (Fixed)</h1>
+    <p class="muted">A tiny app that <strong>NO LONGER violates SOLID</strong>. Use it to refactor with SRP & OCP, or don't cause it's done!.</p>
 
     <div class="panel">
       <div class="row">
@@ -51,6 +51,8 @@
       <div id="member" class="panel"></div>
     </div>
 
+    <script src="libraryService.js"></script>
     <script src="app.js"></script>
+    <script src="tests.js"></script>
   </body>
 </html>

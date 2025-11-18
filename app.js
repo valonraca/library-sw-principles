@@ -1,125 +1,180 @@
-const Library = {
-  books: [], // [{id, title, author, available}]
-  members: [], // [{id, name, email, fees}]
-  log: [],
-
-  // Hard-coded concrete services (tight coupling)
-  paymentProvider: {
-    charge(amount, card) {
-      console.log(`[FakeStripe] Charging $${amount} to ${card}`);
-      return { ok: true, txn: Math.random().toString(36).slice(2) };
+/* eslint-disable no-alert */
+// UI shell responsible for DOM wiring; domain logic lives in LibraryService
+(function bootstrapUI(global) {
+  class LibraryUI {
+    constructor(service, doc) {
+      this.service = service;
+      this.doc = doc;
+      this.inventorySel = '#app';
+      this.memberSel = '#member';
+      this.currentMemberId = null;
     }
-  },
-  mailer: {
-    send(to, subject, body) {
-      console.log(`[Email] to=${to} subject=${subject} body=${body}`);
-      return true;
+
+    init() {
+      // Load initial state, hook up DOM events, and draw first screens
+      this.service.initialize();
+      this._bindEvents();
+      this.renderInventory();
+      this.renderMember();
     }
-  },
 
-  // Persistence mixed with domain (uses localStorage to keep it simple)
-  load() {
-    try {
-      const data = JSON.parse(localStorage.getItem('LIB_DATA') || '{}');
-      this.books = data.books || [];
-      this.members = data.members || [];
-      this._log(`Loaded ${this.books.length} books & ${this.members.length} members from localStorage.`);
-    } catch (e) {
-      this._log('Load failed. Resetting.');
-      this.books = []; this.members = [];
+    _bindEvents() {
+      // Basic declarative bindings; each handler calls into the domain service
+      this.$('#add').addEventListener('click', () => this._handleAddBook());
+      this.$('#reg').addEventListener('click', () => this._handleRegisterMember());
+      this.$('#checkout').addEventListener('click', () => this._handleCheckout());
+      this.$('#search').addEventListener('input', (e) => this._handleSearch(e));
+      this.$('#seed').addEventListener('click', () => this._handleSeed());
+      this.$('#reset').addEventListener('click', () => this._handleReset());
     }
-    this.renderInventory('#app');
-  },
-  save() {
-    localStorage.setItem('LIB_DATA', JSON.stringify({ books: this.books, members: this.members }));
-    this._log('Saved data to localStorage.');
-  },
 
-  // Domain operations (validation + policies + I/O + UI side-effects all jumbled)
-  addBook(id, title, author) {
-    if (!id || !title) { alert('Missing fields'); return; }
-    this.books.push({ id, title, author, available: true });
-    this._log(`Book added: ${title}`);
-    this.save();
-    this.renderInventory('#app');
-  },
-  registerMember(id, name, email) {
-    if (!email || email.indexOf('@') < 0) { alert('Invalid email'); return; }
-    this.members.push({ id, name, email, fees: 0 });
-    this._log(`Member registered: ${name}`);
-    this.mailer.send(email, 'Welcome', `Hi ${name}, your id is ${id}`);
-    this.save();
-  },
-  checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
-    const b = this.books.find(x => x.id === bookId);
-    const m = this.members.find(x => x.id === memberId);
-    if (!b) return alert('Book not found');
-    if (!m) return alert('Member not found');
-    if (!b.available) return alert('Book already checked out');
-
-    let fee = 0; // Nonsense rule baked in here (policy + payment together)
-    if (days > 14) fee = (days - 14) * 0.5;
-    if (fee > 0) {
-      const res = this.paymentProvider.charge(fee, card);
-      if (!res.ok) return alert('Payment failed');
-      m.fees += fee; // double-duty meaning as outstanding + history
+    _handleAddBook() {
+      // Capture inputs and send to service; only UI updates happen here
+      this._execute(() => this.service.addBook({
+        id: this._value('#id'),
+        title: this._value('#title'),
+        author: this._value('#author')
+      }), () => {
+        this._clearInputs('#id', '#title', '#author');
+      });
     }
-    b.available = false;
-    this._log(`Checked out ${b.title} to ${m.name} for ${days} days (fee=$${fee}).`);
-    this.mailer.send(m.email, 'Checkout', `You borrowed ${b.title}. Fee: $${fee}`);
-    this.save();
-    this.renderInventory('#app');
-    this.renderMember(m.id, '#member');
-  },
 
-  search(term) {
-    const t = term.trim().toLowerCase();
-    const res = this.books.filter(b => b.title.toLowerCase().includes(t) || b.author.toLowerCase().includes(t));
-    this._log(`Search '${term}' → ${res.length} results.`);
-    this.renderInventory('#app');
-    return res;
-  },
+    _handleRegisterMember() {
+      // After registering we track the last member to render their card
+      this._execute(() => this.service.registerMember({
+        id: this._value('#mid'),
+        name: this._value('#mname'),
+        email: this._value('#memail')
+      }), ({ member }) => {
+        this.currentMemberId = member.id;
+        this.renderMember(member.id);
+        this._clearInputs('#mid', '#mname', '#memail');
+      });
+    }
 
-  // UI rendering tightly coupled
-  renderInventory(sel) {
-    const el = document.querySelector(sel);
-    el.innerHTML = `<h3>Inventory</h3>` +
-      `<ul>` + this.books.map(b => `<li><strong>${b.available ? '<span class="ok">✓</span>' : '<span class="no">✗</span>'}</strong> ${b.id}: ${b.title} — ${b.author}</li>`).join('') + `</ul>` +
-      `<div class="muted">${this.log.slice(-3).join('<br/>')}</div>`;
-  },
-  renderMember(memberId, sel) {
-    const m = this.members.find(x => x.id === memberId);
-    const el = document.querySelector(sel);
-    el.innerHTML = m ? `<h3>${m.name}</h3><p>${m.email}</p><p>Fees: $${m.fees}</p>` : '<em>No member selected.</em>';
-  },
+    _handleCheckout() {
+      // Checkout uses the injected payment/notifier via the service
+      this._execute(() => this.service.checkoutBook({
+        bookId: this._value('#bookId'),
+        memberId: this._value('#memberId'),
+        days: 21,
+        card: '4111-1111'
+      }), ({ member }) => {
+        this.currentMemberId = member.id;
+        this.renderMember(member.id);
+      });
+    }
 
-  _log(msg) {
-    const stamp = new Date().toLocaleTimeString();
-    this.log.push(`${stamp} — ${msg}`);
-    if (this.log.length > 50) this.log.shift();
-    console.log('[LOG]', msg);
+    _handleSearch(event) {
+      const term = event.target.value || '';
+      this.service.search(term);
+      this.renderInventory();
+    }
+
+    _handleSeed() {
+      // Simple demo data seeding so the UI stays familiar
+      const actions = [];
+      if (this.service.getBooks().length === 0) {
+        actions.push(() => this.service.addBook({ id: 'b1', title: 'Clean Code', author: 'Robert C. Martin' }));
+        actions.push(() => this.service.addBook({ id: 'b2', title: 'Design Patterns', author: 'GoF' }));
+      }
+      if (this.service.getMembers().length === 0) {
+        actions.push(() => this.service.registerMember({ id: 'm1', name: 'Ada', email: 'ada@example.com' }));
+        actions.push(() => this.service.registerMember({ id: 'm2', name: 'Linus', email: 'linus@example.com' }));
+      }
+      actions.forEach(action => this._execute(action));
+      if (actions.length > 0) {
+        alert('Seeded.');
+      }
+    }
+
+    _handleReset() {
+      global.localStorage.removeItem('LIB_DATA');
+      global.location.reload();
+    }
+
+    renderInventory() {
+      // Renders inventory panel using current service state + log tail
+      const el = this.$(this.inventorySel);
+      const books = this.service.getBooks();
+      const recentLog = this.service.getLog().slice(-3).join('<br/>');
+      el.innerHTML = `<h3>Inventory</h3>` +
+        `<ul>` + books.map(b => `<li><strong>${b.available ? '<span class="ok">✓</span>' : '<span class="no">✗</span>'}</strong> ${b.id}: ${b.title} — ${b.author || ''}</li>`).join('') + `</ul>` +
+        `<div class="muted">${recentLog || ''}</div>`;
+    }
+
+    renderMember(memberId = this.currentMemberId) {
+      // Renders right-side member card if one is selected
+      const el = this.$(this.memberSel);
+      if (!memberId) {
+        el.innerHTML = '<em>No member selected.</em>';
+        return;
+      }
+      const member = this.service.getMemberById(memberId);
+      el.innerHTML = member
+        ? `<h3>${member.name}</h3><p>${member.email}</p><p>Fees: $${member.fees}</p>`
+        : '<em>No member selected.</em>';
+    }
+
+    _execute(action, onSuccess) {
+      // Helper to standardize success/error handling after service calls
+      // Acceptance: domain methods stay DOM-free; UI owns alerts/rendering
+      const result = typeof action === 'function' ? action() : null;
+      if (!result?.ok) {
+        if (result && result.error) this._showError(result.error);
+        return result;
+      }
+      if (typeof onSuccess === 'function') onSuccess(result.data);
+      this.renderInventory();
+      return result;
+    }
+
+    _showError(message) {
+      alert(message);
+    }
+
+    _value(sel) {
+      const input = this.$(sel);
+      return (input.value || '').trim();
+    }
+
+    _clearInputs(...selectors) {
+      selectors.forEach(sel => {
+        const input = this.$(sel);
+        if (input) input.value = '';
+      });
+    }
+
+    $(sel) {
+      return this.doc.querySelector(sel);
+    }
   }
-};
 
-// --- Minimal wiring (STILL tightly coupled) ---
-(function bootstrap(){
-  Library.load();
+  function createService() {
+    // Build the real adapters and inject them into the domain service
+    // Acceptance: swapping payment/notifier only touches this wiring layer
+    const adapters = global.LibraryAdapters || {};
+    const gateway = new adapters.LocalStorageGateway('LIB_DATA');
+    const bookRepo = new adapters.LocalStorageBookRepo(gateway);
+    const memberRepo = new adapters.LocalStorageMemberRepo(gateway);
+    return new global.LibraryService({
+      bookRepo,
+      memberRepo,
+      paymentProvider: new adapters.FakePaymentProvider(),
+      notifier: new adapters.ConsoleNotifier()
+    });
+  }
 
-  const $ = sel => document.querySelector(sel);
-  $('#add').onclick = () => Library.addBook($('#id').value, $('#title').value, $('#author').value);
-  $('#reg').onclick = () => Library.registerMember($('#mid').value, $('#mname').value, $('#memail').value);
-  $('#checkout').onclick = () => Library.checkoutBook($('#bookId').value, $('#memberId').value);
-  $('#search').oninput = e => Library.search(e.target.value);
-  $('#seed').onclick = () => {
-    if (Library.books.length === 0) {
-      Library.addBook('b1', 'Clean Code', 'Robert C. Martin');
-      Library.addBook('b2', 'Design Patterns', 'GoF');
-    }
-    if (Library.members.length === 0) {
-      Library.registerMember('m1', 'Ada', 'ada@example.com');
-      Library.registerMember('m2', 'Linus', 'linus@example.com');
-    }
-    alert('Seeded.');
-  };
-  $('#reset').onclick = () => { localStorage.removeItem('LIB_DATA'); location.reload(); };
-})();
+  function start() {
+    // Entry point: create service + UI once DOM is ready
+    const service = createService();
+    const ui = new LibraryUI(service, global.document);
+    ui.init();
+  }
+
+  if (global.document.readyState === 'loading') {
+    global.document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})(window);
