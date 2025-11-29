@@ -46,6 +46,70 @@ class LibraryService {
   }
 }
 
+// --- Simple Repos (localStorage-backed) ---
+
+class BookRepo {
+  constructor() {
+    this.books = [];
+  }
+
+  load(data) {
+    this.books = data || [];
+  }
+
+  all() {
+    return this.books;
+  }
+
+  add(book) {
+    this.books.push(book);
+  }
+
+  find(id) {
+    return this.books.find(b => b.id === id);
+  }
+
+  update(book) {
+    const i = this.books.findIndex(b => b.id === book.id);
+    if (i !== -1) this.books[i] = book;
+  }
+
+  search(term) {
+    const t = term.trim().toLowerCase();
+    return this.books.filter(
+      b =>
+        b.title.toLowerCase().includes(t) ||
+        b.author.toLowerCase().includes(t)
+    );
+  }
+}
+
+class MemberRepo {
+  constructor() {
+    this.members = [];
+  }
+
+  load(data) {
+    this.members = data || [];
+  }
+
+  all() {
+    return this.members;
+  }
+
+  add(member) {
+    this.members.push(member);
+  }
+
+  find(id) {
+    return this.members.find(m => m.id === id);
+  }
+
+  update(member) {
+    const i = this.members.findIndex(m => m.id === member.id);
+    if (i !== -1) this.members[i] = member;
+  }
+}
 
 
 
