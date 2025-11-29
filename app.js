@@ -216,6 +216,44 @@ const Library = {
   }
 };
 
+// --- New Wiring (SRP + OCP) ---
+
+// Repos
+const bookRepo = new BookRepo();
+const memberRepo = new MemberRepo();
+
+// Load from localStorage once
+(function loadFromStorage() {
+  try {
+    const data = JSON.parse(localStorage.getItem('LIB_DATA') || '{}');
+    bookRepo.load(data.books || []);
+    memberRepo.load(data.members || []);
+  } catch (e) {
+    console.warn("Failed to load storage");
+  }
+})();
+
+// Wrap old payment/mailer as injectable dependencies
+const payment = {
+  charge: (amount, card) => Library.paymentProvider.charge(amount, card)
+};
+
+const notifier = {
+  send: (to, subject, body) => Library.mailer.send(to, subject, body)
+};
+
+// Create service
+const service = new LibraryService(bookRepo, memberRepo, payment, notifier);
+
+// Save function 
+function saveToStorage() {
+  localStorage.setItem('LIB_DATA', JSON.stringify({
+    books: bookRepo.all(),
+    members: memberRepo.all()
+  }));
+}
+
+
 // --- Minimal wiring (STILL tightly coupled) ---
 (function bootstrap(){
   Library.load();
