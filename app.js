@@ -1,6 +1,6 @@
-import { Repository } from "./modules/Repository.js";
-import { ConsoleNotifier, MockPaymentProvider } from "./modules/Services.js";
-import { Library } from "./modules/Library.js";
+import { Repository } from "./modules/repository.js";
+import { ConsoleNotifier, MockPaymentProvider } from "./modules/services.js";
+import { Library } from "./modules/library.js";
 
 const bookRepo = new Repository("library_books");
 const memberRepo = new Repository("library_members");
@@ -8,7 +8,6 @@ const notifier = new ConsoleNotifier();
 const payment = new MockPaymentProvider();
 
 const library = new Library(bookRepo, memberRepo, payment, notifier);
-
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -20,12 +19,12 @@ function renderInventory() {
             ${books
                 .map(
                     b => `
-                <li>
-                    <span class="${b.available ? "ok" : "no"}">
-                        ${b.available ? "✓" : "✗"}
-                    </span>
-                    <strong>${b.title}</strong> — ${b.author} (${b.id})
-                </li>`
+                    <li>
+                        <span class="${b.available ? "ok" : "no"}">
+                            ${b.available ? "✓" : "✗"}
+                        </span>
+                        <strong>${b.title}</strong> — ${b.author} (${b.id})
+                    </li>`
                 )
                 .join("")}
         </ul>
@@ -38,8 +37,6 @@ function renderMember(id) {
         ? `<h3>${m.name}</h3><p>${m.email}</p><p>Fees: $${m.fees}</p>`
         : "<em>No member selected.</em>";
 }
-
-
 
 $("#add").onclick = () => {
     try {
@@ -72,7 +69,9 @@ $("#search").oninput = (e) => {
     const results = library.searchBooks(e.target.value);
     $("#app").innerHTML = `
         <h3>Search Results</h3>
-        <ul>${results.map(b => `<li>${b.title}</li>`).join("")}</ul>
+        <ul>
+            ${results.map(b => `<li>${b.title}</li>`).join("")}
+        </ul>
     `;
 };
 
