@@ -1,3 +1,54 @@
+class LibraryService {
+  constructor(bookRepo, memberRepo, payment, notifier) {
+    this.bookRepo = bookRepo;
+    this.memberRepo = memberRepo;
+    this.payment = payment;
+    this.notifier = notifier;
+  }
+
+  addBook(id, title, author) {
+    if (!id || !title) throw new Error('Missing fields');
+    this.bookRepo.add({ id, title, author, available: true });
+  }
+
+  registerMember(id, name, email) {
+    if (!email || !email.includes('@')) throw new Error('Invalid email');
+    const member = { id, name, email, fees: 0 };
+    this.memberRepo.add(member);
+    this.notifier.send(email, 'Welcome', `Hi ${name}, your id is ${id}`);
+  }
+
+  checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
+    const b = this.bookRepo.find(bookId);
+    const m = this.memberRepo.find(memberId);
+    if (!b) throw new Error('Book not found');
+    if (!m) throw new Error('Member not found');
+    if (!b.available) throw new Error('Book already checked out');
+
+    let fee = 0;
+    if (days > 14) fee = (days - 14) * 0.5;
+
+    if (fee > 0) {
+      const res = this.payment.charge(fee, card);
+      if (!res.ok) throw new Error('Payment failed');
+      m.fees += fee;
+      this.memberRepo.update(m);
+    }
+
+    b.available = false;
+    this.bookRepo.update(b);
+
+    this.notifier.send(m.email, 'Checkout', `You borrowed ${b.title}. Fee: $${fee}`);
+  }
+
+  search(term) {
+    return this.bookRepo.search(term);
+  }
+}
+
+
+
+
 const Library = {
   books: [], // [{id, title, author, available}]
   members: [], // [{id, name, email, fees}]
