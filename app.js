@@ -112,13 +112,11 @@ class MemberRepo {
 }
 
 
-
 const Library = {
-  books: [], // [{id, title, author, available}]
-  members: [], // [{id, name, email, fees}]
+  books: [],
+  members: [],
   log: [],
 
-  // Hard-coded concrete services (tight coupling)
   paymentProvider: {
     charge(amount, card) {
       console.log(`[FakeStripe] Charging $${amount} to ${card}`);
@@ -132,7 +130,6 @@ const Library = {
     }
   },
 
-  // Persistence mixed with domain (uses localStorage to keep it simple)
   load() {
     try {
       const data = JSON.parse(localStorage.getItem('LIB_DATA') || '{}');
@@ -141,71 +138,77 @@ const Library = {
       this._log(`Loaded ${this.books.length} books & ${this.members.length} members from localStorage.`);
     } catch (e) {
       this._log('Load failed. Resetting.');
-      this.books = []; this.members = [];
+      this.books = []; 
+      this.members = [];
     }
     this.renderInventory('#app');
   },
+
   save() {
     localStorage.setItem('LIB_DATA', JSON.stringify({ books: this.books, members: this.members }));
     this._log('Saved data to localStorage.');
   },
 
-  // Domain operations (validation + policies + I/O + UI side-effects all jumbled)
-  addBook(id, title, author) {
-    if (!id || !title) { alert('Missing fields'); return; }
-    this.books.push({ id, title, author, available: true });
-    this._log(`Book added: ${title}`);
-    this.save();
-    this.renderInventory('#app');
-  },
-  registerMember(id, name, email) {
-    if (!email || email.indexOf('@') < 0) { alert('Invalid email'); return; }
-    this.members.push({ id, name, email, fees: 0 });
-    this._log(`Member registered: ${name}`);
-    this.mailer.send(email, 'Welcome', `Hi ${name}, your id is ${id}`);
-    this.save();
-  },
-  checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
-    const b = this.books.find(x => x.id === bookId);
-    const m = this.members.find(x => x.id === memberId);
-    if (!b) return alert('Book not found');
-    if (!m) return alert('Member not found');
-    if (!b.available) return alert('Book already checked out');
+  // --- REFACTORED METHODS (delegate to service) ---
 
-    let fee = 0; // Nonsense rule baked in here (policy + payment together)
-    if (days > 14) fee = (days - 14) * 0.5;
-    if (fee > 0) {
-      const res = this.paymentProvider.charge(fee, card);
-      if (!res.ok) return alert('Payment failed');
-      m.fees += fee; // double-duty meaning as outstanding + history
+  addBook(id, title, author) {
+    try {
+      service.addBook(id, title, author);
+      this._log(`Book added: ${title}`);
+      saveToStorage();
+      this.renderInventory('#app');
+    } catch (e) {
+      alert(e.message);
     }
-    b.available = false;
-    this._log(`Checked out ${b.title} to ${m.name} for ${days} days (fee=$${fee}).`);
-    this.mailer.send(m.email, 'Checkout', `You borrowed ${b.title}. Fee: $${fee}`);
-    this.save();
-    this.renderInventory('#app');
-    this.renderMember(m.id, '#member');
+  },
+
+  registerMember(id, name, email) {
+    try {
+      service.registerMember(id, name, email);
+      this._log(`Member registered: ${name}`);
+      saveToStorage();
+    } catch (e) {
+      alert(e.message);
+    }
+  },
+
+  checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
+    try {
+      service.checkoutBook(bookId, memberId, days, card);
+      const m = memberRepo.find(memberId);
+      this._log(`Checked out book to ${m.name} for ${days} days.`);
+      saveToStorage();
+      this.renderInventory('#app');
+      this.renderMember(m.id, '#member');
+    } catch (e) {
+      alert(e.message);
+    }
   },
 
   search(term) {
-    const t = term.trim().toLowerCase();
-    const res = this.books.filter(b => b.title.toLowerCase().includes(t) || b.author.toLowerCase().includes(t));
-    this._log(`Search '${term}' → ${res.length} results.`);
+    const results = service.search(term);
+    this._log(`Search '${term}' → ${results.length} results.`);
     this.renderInventory('#app');
-    return res;
+    return results;
   },
 
-  // UI rendering tightly coupled
+  // --- UI RENDERING (unchanged) ---
+
   renderInventory(sel) {
     const el = document.querySelector(sel);
     el.innerHTML = `<h3>Inventory</h3>` +
-      `<ul>` + this.books.map(b => `<li><strong>${b.available ? '<span class="ok">✓</span>' : '<span class="no">✗</span>'}</strong> ${b.id}: ${b.title} — ${b.author}</li>`).join('') + `</ul>` +
+      `<ul>` + this.books.map(b => 
+        `<li><strong>${b.available ? '<span class="ok">✓</span>' : '<span class="no">✗</span>'}</strong> ${b.id}: ${b.title} — ${b.author}</li>`
+      ).join('') + `</ul>` +
       `<div class="muted">${this.log.slice(-3).join('<br/>')}</div>`;
   },
+
   renderMember(memberId, sel) {
     const m = this.members.find(x => x.id === memberId);
     const el = document.querySelector(sel);
-    el.innerHTML = m ? `<h3>${m.name}</h3><p>${m.email}</p><p>Fees: $${m.fees}</p>` : '<em>No member selected.</em>';
+    el.innerHTML = m 
+      ? `<h3>${m.name}</h3><p>${m.email}</p><p>Fees: $${m.fees}</p>` 
+      : '<em>No member selected.</em>';
   },
 
   _log(msg) {
@@ -215,6 +218,7 @@ const Library = {
     console.log('[LOG]', msg);
   }
 };
+
 
 // --- New Wiring (SRP + OCP) ---
 
