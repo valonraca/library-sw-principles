@@ -3,27 +3,21 @@ const Library = {
   members: [], // [{id, name, email, fees}]
   log: [],
 
-  // Hard-coded concrete services (tight coupling)
-  paymentProvider: {
-    charge(amount, card) {
-      console.log(`[FakeStripe] Charging $${amount} to ${card}`);
-      return { ok: true, txn: Math.random().toString(36).slice(2) };
-    }
-  },
-  mailer: {
-    send(to, subject, body) {
-      console.log(`[Email] to=${to} subject=${subject} body=${body}`);
-      return true;
-    }
-  },
+  // Payment, mailer and storage will be injected (SRP/OCP):
+  // - `paymentProvider` must implement `charge(amount, card)` → {ok, txn}
+  // - `mailer` must implement `send(to, subject, body)`
+  // - `storage` must implement `load()` and `save(payload)`
+  paymentProvider: null,
+  mailer: null,
+  storage: null,
 
-  // Persistence mixed with domain (uses localStorage to keep it simple)
+  // Persistence separated: uses injected `storage` when available
   load() {
     try {
-      const data = JSON.parse(localStorage.getItem('LIB_DATA') || '{}');
+      const data = this.storage ? this.storage.load() : JSON.parse(localStorage.getItem('LIB_DATA') || '{}');
       this.books = data.books || [];
       this.members = data.members || [];
-      this._log(`Loaded ${this.books.length} books & ${this.members.length} members from localStorage.`);
+      this._log(`Loaded ${this.books.length} books & ${this.members.length} members from storage.`);
     } catch (e) {
       this._log('Load failed. Resetting.');
       this.books = []; this.members = [];
@@ -31,8 +25,12 @@ const Library = {
     this.renderInventory('#app');
   },
   save() {
-    localStorage.setItem('LIB_DATA', JSON.stringify({ books: this.books, members: this.members }));
-    this._log('Saved data to localStorage.');
+    if (this.storage) {
+      this.storage.save({ books: this.books, members: this.members });
+    } else {
+      localStorage.setItem('LIB_DATA', JSON.stringify({ books: this.books, members: this.members }));
+    }
+    this._log('Saved data to storage.');
   },
 
   // Domain operations (validation + policies + I/O + UI side-effects all jumbled)
@@ -103,6 +101,16 @@ const Library = {
 
 // --- Minimal wiring (STILL tightly coupled) ---
 (function bootstrap(){
+  // wire concrete services (could be swapped without changing Library internals)
+  try {
+    Library.paymentProvider = new PaymentService();
+    Library.mailer = new MailerService();
+    Library.storage = new StorageService();
+  } catch (e) {
+    // if services are missing, Library will fallback to its internal/localStorage behavior
+    console.warn('Services not available, using defaults.', e);
+  }
+
   Library.load();
 
   const $ = sel => document.querySelector(sel);
