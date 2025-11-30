@@ -295,6 +295,7 @@ const Library = {
   }
 };
 
+/*
 // --- Minimal wiring (STILL tightly coupled) ---
 (function bootstrap(){
   Library.load();
@@ -317,3 +318,101 @@ const Library = {
   };
   $('#reset').onclick = () => { localStorage.removeItem('LIB_DATA'); location.reload(); };
 })();
+
+*/
+
+// --- New wiring using LibraryService (no DOM in domain) ---
+(function bootstrap() {
+  const storage = new LocalStorageLibraryStorage();
+  const bookRepo = new LocalStorageBookRepo(storage);
+  const memberRepo = new LocalStorageMemberRepo(storage);
+
+  // Adapters for payment + notifier (OCP: easy to swap later)
+  const paymentProvider = {
+    charge(amount, card) {
+      console.log(`[FakeStripe] Charging $${amount} to ${card}`);
+      return { ok: true, txn: Math.random().toString(36).slice(2) };
+    }
+  };
+
+  const notifier = {
+    send(to, subject, body) {
+      console.log(`[Email] to=${to} subject=${subject} body=${body}`);
+      return true;
+    }
+  };
+
+  const service = new LibraryService(
+    bookRepo,
+    memberRepo,
+    paymentProvider,
+    notifier,
+    uiLogger
+  );
+
+  // initial load + first render
+  service.load();
+  renderInventory(bookRepo.getAll(), '#app');
+
+  const $ = sel => document.querySelector(sel);
+
+  $('#add').onclick = () => {
+    try {
+      service.addBook($('#id').value, $('#title').value, $('#author').value);
+      renderInventory(bookRepo.getAll(), '#app');
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  $('#reg').onclick = () => {
+    try {
+      service.registerMember($('#mid').value, $('#mname').value, $('#memail').value);
+      renderInventory(bookRepo.getAll(), '#app');
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  $('#checkout').onclick = () => {
+    try {
+      const result = service.checkoutBook(
+        $('#bookId').value,
+        $('#memberId').value
+      );
+      renderInventory(bookRepo.getAll(), '#app');
+      renderMember(result.member, '#member');
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  $('#search').oninput = e => {
+    const results = service.search(e.target.value);
+    // show only search results in inventory
+    renderInventory(results, '#app');
+  };
+
+  $('#seed').onclick = () => {
+    try {
+      if (bookRepo.getAll().length === 0) {
+        service.addBook('b1', 'Clean Code', 'Robert C. Martin');
+        service.addBook('b2', 'Design Patterns', 'GoF');
+      }
+      if (memberRepo.getAll().length === 0) {
+        service.registerMember('m1', 'Ada', 'ada@example.com');
+        service.registerMember('m2', 'Linus', 'linus@example.com');
+      }
+      alert('Seeded.');
+      renderInventory(bookRepo.getAll(), '#app');
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  $('#reset').onclick = () => {
+    storage.reset();
+    location.reload();
+  };
+})();
+
