@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>LibraryApp (Broken)</title>
+    <title>LibraryApp</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
       .row { display: flex; gap: 12px; margin-bottom: 8px; }
@@ -17,9 +17,10 @@
     </style>
   </head>
   <body>
-    
-    <h1>LibraryApp (BROKEN)</h1>
-    <p class="muted">A tiny app that <strong>violates SOLID</strong> on purpose. Use it to refactor with SRP & OCP.</p>
+    <h1>LibraryApp</h1>
+    <p class="muted">
+      A tiny app originally built to <strong>violate SOLID</strong>. This version is refactored with SRP &amp; OCP.
+    </p>
 
     <div class="panel">
       <div class="row">
@@ -51,6 +52,7 @@
       <div id="member" class="panel"></div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Important: module script so ES imports work -->
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
