@@ -1,35 +1,18 @@
-# LibraryApp (Broken) — Refactor Exercise
+## Refactor Rationale (SRP & OCP)
 
-**Goal:** Apply SRP (Single Responsibility Principle) and OCP (Open/Closed Principle) to this tiny browser-only app.
-You will refactor *one or two classes/modules* and submit **diffs + rationale**.
+The original `Library` object violated SRP by mixing domain rules, persistence, logging, payment, email, and DOM rendering in a single module. It also violated OCP because payment and notification logic were hard-coded inside `Library`, so adding a new provider required modifying core domain code.
 
-## How to Run
-- Open `index.html` in a browser.
-  
-## What’s Intentionally Wrong (spot at least 4)
-- **God Object**: `Library` handles domain rules, persistence (localStorage), UI rendering (DOM), payments, and emails.
-- **Tight Coupling**: Payment and email are *hard-coded* inside `Library`.
-- **UI in Domain**: Domain methods call `render*` and `alert` directly.
-- **No Extension Points**: Changing payment/email requires editing `Library` (violates OCP).
-- **Global Mutable State**: Single `Library` object used everywhere.
+I refactored this into several focused components:
 
-## Your Task (minimum)
-1. **SRP Split**: Extract a `LibraryService` that contains only domain rules — no DOM, no `alert`, no storage.
-2. **OCP Ports**: Define tiny interfaces (plain JS objects) for `notifier` and `payment` and **inject** them.
-3. Storage access should happen via a `BookRepo` and `MemberRepo` abstraction (e.g., backed by localStorage).
+- **`LibraryService`** now contains only domain rules: adding books, registering members, checking out books, and searching. It never touches the DOM, `alert`, or `localStorage`. Each method returns a simple result object (`{ ok, error, message, ... }`), so the UI decides how to present errors.
+- **Persistence** is handled through a small local “database” plus two repositories: `createLocalStorageStore` owns the serialization to/from `localStorage`, while `BookRepo` and `MemberRepo` expose domain-oriented operations (`getAll`, `findById`, `add`, `update`). `LibraryService` depends only on these abstractions, not on `localStorage` directly.
+- **Logging** is handled by `createLogger`, which keeps an in-memory log and exposes `getRecent` so the UI can render it. The logger is injected into the other components.
 
-## Deliverables
-- **Git diffs** (or a `patch` file) showing your changes.
-- A short **rationale** (200–400 words) explaining:
-  - What responsibilities you moved and why (SRP).
-  - Where/why you introduced extension points (OCP).
-  - How your design allows adding a new payment provider (or notifier) **without** changing `LibraryService`.
+For OCP, I introduced **ports** for external services:
 
-## Acceptance Check
-- Domain rules run without touching the DOM.
-- Swapping `payment` or `notifier` requires changing only wiring, not domain logic.
-- Basic flows still work in the browser (add/register/checkout/search).
+- `paymentProvider` with a single `charge(amount, card)` method.
+- `notifier` with a single `send(to, subject, body)` method.
 
-## Nice-to-have (optional)
-- Basic error objects instead of `alert`.
-- Unit-ish tests using plain functions in the console.
+These are plain JavaScript objects passed into `createLibraryService` in the bootstrap wiring. `LibraryService` knows only about the interfaces, not about the concrete implementations. To add a new payment provider or notifier, we can create another object with the same shape and change only the wiring in the bootstrap code, leaving `LibraryService` unchanged.
+
+Finally, the I/O and UI logic live entirely in the bootstrap section: it wires DOM events, calls `LibraryService`, shows `alert` messages on error, and re-renders the inventory and member panels. This keeps domain logic testable in isolation while preserving the original flows (add/register/checkout/search) in the browser.
