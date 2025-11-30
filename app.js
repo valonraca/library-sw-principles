@@ -145,6 +145,51 @@ class LibraryService {
   }
 }
 
+// ===== UI Layer (DOM only, no business rules) =====
+
+const uiLog = [];
+
+function uiLogger(msg) {
+  const stamp = new Date().toLocaleTimeString();
+  const entry = `${stamp} — ${msg}`;
+  uiLog.push(entry);
+  if (uiLog.length > 50) uiLog.shift();
+  console.log('[LOG]', msg);
+}
+
+function renderInventory(books, sel) {
+  const el = document.querySelector(sel);
+  if (!el) return;
+
+  el.innerHTML =
+    `<h3>Inventory</h3>` +
+    `<ul>` +
+    books
+      .map(
+        (b) =>
+          `<li><strong>${
+            b.available
+              ? '<span class="ok">✓</span>'
+              : '<span class="no">✗</span>'
+          }</strong> ${b.id}: ${b.title} — ${b.author}</li>`
+      )
+      .join('') +
+    `</ul>` +
+    `<div class="muted">${uiLog.slice(-3).join('<br/>')}</div>`;
+}
+
+function renderMember(member, sel) {
+  const el = document.querySelector(sel);
+  if (!el) return;
+
+  if (!member) {
+    el.innerHTML = '<em>No member selected.</em>';
+  } else {
+    el.innerHTML = `<h3>${member.name}</h3><p>${member.email}</p><p>Fees: $${member.fees}</p>`;
+  }
+}
+
+
 
 
 const Library = {
