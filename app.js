@@ -180,3 +180,4 @@ class Renderer {
   };
   $('#reset').onclick = () => { localStorage.removeItem('LIB_DATA'); location.reload(); };
 })();
+//DONE
