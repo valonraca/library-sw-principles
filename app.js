@@ -1,5 +1,5 @@
 // ======================================================
-// REPOSITORIES (Persistence Only) — SRP
+// REPOSITORIES — Persistence Only (SRP)
 // ======================================================
 
 class BookRepo {
@@ -13,10 +13,7 @@ class BookRepo {
   }
 
   save(books, members) {
-    localStorage.setItem(
-      this.key,
-      JSON.stringify({ books, members })
-    );
+    localStorage.setItem(this.key, JSON.stringify({ books, members }));
   }
 }
 
@@ -33,7 +30,7 @@ class MemberRepo {
 
 
 // ======================================================
-// PORTS (OCP) — Interfaces
+// PORTS — Interfaces (OCP)
 // ======================================================
 
 class PaymentPort {
@@ -50,7 +47,7 @@ class NotifierPort {
 
 
 // ======================================================
-// ADAPTERS — Concrete implementations
+// ADAPTERS — Concrete Implementations
 // ======================================================
 
 class FakeStripe extends PaymentPort {
@@ -69,7 +66,7 @@ class ConsoleMailer extends NotifierPort {
 
 
 // ======================================================
-// DOMAIN SERVICE — PURE LOGIC (NO DOM, NO STORAGE)
+// DOMAIN SERVICE — Pure Business Logic (no DOM, no storage)
 // ======================================================
 
 class LibraryService {
@@ -103,11 +100,10 @@ class LibraryService {
       id,
       name,
       email,
-      fees: 0
+      fees: 0,
     });
 
     this.mailer.send(email, "Welcome", `Hi ${name}, your id is ${id}`);
-
     this._save();
   }
 
@@ -141,10 +137,10 @@ class LibraryService {
 
   search(term) {
     const t = term.trim().toLowerCase();
-
-    return this.books.filter(b =>
-      b.title.toLowerCase().includes(t) ||
-      b.author.toLowerCase().includes(t)
+    return this.books.filter(
+      b =>
+        b.title.toLowerCase().includes(t) ||
+        b.author.toLowerCase().includes(t)
     );
   }
 
@@ -155,7 +151,7 @@ class LibraryService {
 
 
 // ======================================================
-// UI LAYER — Handles DOM only (No domain logic here)
+// UI LAYER — DOM Only (no domain logic)
 // ======================================================
 
 const library = new LibraryService(
@@ -172,7 +168,8 @@ function renderInventory() {
     `<ul>` +
     library.books
       .map(
-        b => `<li><strong>${b.available ? "✓" : "✗"}</strong> ${b.id}: ${b.title} — ${b.author}</li>`
+        b =>
+          `<li><strong>${b.available ? "✓" : "✗"}</strong> ${b.id}: ${b.title} — ${b.author}</li>`
       )
       .join("") +
     `</ul>`;
@@ -189,7 +186,7 @@ function renderMember(id) {
 
 
 // ======================================================
-// EVENT HANDLERS — Connect UI → Domain
+// EVENT HANDLERS — UI → DOMAIN
 // ======================================================
 
 document.querySelector("#add").onclick = () => {
@@ -226,5 +223,41 @@ document.querySelector("#search").oninput = e => {
 };
 
 
-// Initial render
+// ======================================================
+// SEED + RESET (UI ONLY) — FIXED
+// ======================================================
+
+document.querySelector("#seed").onclick = () => {
+  try {
+    // Clean/reset bad localStorage before seeding
+    localStorage.removeItem("LIB_DATA");
+
+    // Re-load empty arrays
+    library.books = [];
+    library.members = [];
+
+    // Seed data
+    library.addBook("b1", "Clean Code", "Robert C. Martin");
+    library.addBook("b2", "Design Patterns", "GoF");
+
+    library.registerMember("m1", "Ada", "ada@example.com");
+    library.registerMember("m2", "Linus", "linus@example.com");
+
+    renderInventory();
+    alert("Seeded clean data.");
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+document.querySelector("#reset").onclick = () => {
+  localStorage.removeItem("LIB_DATA");
+  location.reload();
+};
+
+
+// ======================================================
+// INITIAL RENDER
+// ======================================================
+
 renderInventory();
