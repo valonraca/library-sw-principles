@@ -171,6 +171,12 @@ class LibraryService {
 
 
 const Library = {
+   
+  _storage: new LocalStorageLibraryStorage(),
+  _bookRepo: null,
+  _memberRepo: null,
+  _service: null,
+
   books: [], // [{id, title, author, available}]
   members: [], // [{id, name, email, fees}]
   log: [],
@@ -275,6 +281,17 @@ const Library = {
 
 // --- Minimal wiring (STILL tightly coupled) ---
 (function bootstrap(){
+
+  Library._bookRepo = new LocalStorageBookRepo(Library._storage);
+  Library._memberRepo = new LocalStorageMemberRepo(Library._storage);
+  Library._service = new LibraryService({
+    bookRepo: Library._bookRepo,
+    memberRepo: Library._memberRepo,
+    payment: paymentPort,
+    notifier: notifierPort,
+    logger: loggerPort
+  });
+
   Library.load();
 
   const $ = sel => document.querySelector(sel);
