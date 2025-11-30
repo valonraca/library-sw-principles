@@ -77,6 +77,99 @@ const loggerPort = {
 };
 
 
+
+class LibraryService {
+  constructor({ bookRepo, memberRepo, payment, notifier, logger }) {
+    this.bookRepo = bookRepo;
+    this.memberRepo = memberRepo;
+    this.payment = payment;
+    this.notifier = notifier;
+    this.logger = logger || { log: () => {} };
+  }
+
+  addBook(id, title, author) {
+    if (!id || !title || !author) {
+      return { ok: false, error: "All fields are required." };
+    }
+
+    const books = this.bookRepo.getAll();
+    if (books.some(b => b.id === id)) {
+      return { ok: false, error: "Book ID already exists." };
+    }
+
+    books.push({ id, title, author, available: true });
+    this.bookRepo.saveAll(books);
+    this.logger.log(`Book added: ${title}`);
+
+    return { ok: true };
+  }
+
+  registerMember(id, name, email) {
+    if (!id || !name || !email) {
+      return { ok: false, error: "All fields are required." };
+    }
+
+    if (!email.includes("@")) {
+      return { ok: false, error: "Invalid email." };
+    }
+
+    const members = this.memberRepo.getAll();
+    if (members.some(m => m.id === id)) {
+      return { ok: false, error: "Member ID already exists." };
+    }
+
+    members.push({ id, name, email, fees: 0 });
+    this.memberRepo.saveAll(members);
+    this.logger.log(`Member registered: ${name}`);
+    this.notifier.send(email, "Welcome!", `Hello ${name}, your ID is ${id}.`);
+
+    return { ok: true };
+  }
+
+  checkoutBook(bookId, memberId, days = 14, card = "4111-1111") {
+    const books = this.bookRepo.getAll();
+    const members = this.memberRepo.getAll();
+
+    const book = books.find(b => b.id === bookId);
+    const member = members.find(m => m.id === memberId);
+
+    if (!book) return { ok: false, error: "Book not found." };
+    if (!member) return { ok: false, error: "Member not found." };
+    if (!book.available) return { ok: false, error: "Book already borrowed." };
+
+    let fee = 0;
+    if (days > 14) {
+      fee = (days - 14) * 0.5;
+      const result = this.payment.charge(fee, card);
+      if (!result.ok) return { ok: false, error: "Payment failed." };
+      member.fees += fee;
+    }
+
+    book.available = false;
+    this.bookRepo.saveAll(books);
+    this.memberRepo.saveAll(members);
+
+    this.logger.log(`Checkout: ${book.title} -> ${member.name}, fee: ${fee}`);
+    this.notifier.send(member.email, "Checkout", `Borrowed ${book.title}`);
+
+    return { ok: true, fee };
+  }
+
+  search(term) {
+    const t = term.trim().toLowerCase();
+    const books = this.bookRepo.getAll();
+    return books.filter(
+      b =>
+        b.title.toLowerCase().includes(t) ||
+        b.author.toLowerCase().includes(t) ||
+        b.id.toLowerCase().includes(t)
+    );
+  }
+}
+
+
+
+
 const Library = {
   books: [], // [{id, title, author, available}]
   members: [], // [{id, name, email, fees}]
