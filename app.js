@@ -213,14 +213,22 @@ const Library = {
     this._log('Saved data to localStorage.');
   },
 
-  // Domain operations (validation + policies + I/O + UI side-effects all jumbled)
-  addBook(id, title, author) {
-    if (!id || !title) { alert('Missing fields'); return; }
-    this.books.push({ id, title, author, available: true });
-    this._log(`Book added: ${title}`);
-    this.save();
-    this.renderInventory('#app');
-  },
+ addBook(id, title, author) {
+  const result = this._service.addBook(id, title, author);
+
+  if (!result.ok) {
+    alert(result.error);
+    return;
+  }
+
+  const data = this._storage.load();
+  this.books = data.books || [];
+
+  this._log(`Book added: ${title}`);
+  this.renderInventory('#app');
+},
+
+
   registerMember(id, name, email) {
     if (!email || email.indexOf('@') < 0) { alert('Invalid email'); return; }
     this.members.push({ id, name, email, fees: 0 });
