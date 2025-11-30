@@ -1,41 +1,49 @@
 // =========================
-// Repositories
+// Repositories (storage)
 // =========================
 
-class ClassRepo {
+class BookRepo {
   constructor() {
-    this.classes = [];
+    this.books = [];
   }
 
   load() {
     try {
-      const data = JSON.parse(localStorage.getItem("GYM_CLASSES") || "[]");
-      this.classes = data;
+      const data = JSON.parse(localStorage.getItem("LIB_DATA") || "{}");
+      this.books = data.books || [];
     } catch (e) {
-      this.classes = [];
+      this.books = [];
     }
   }
 
-  save() {
-    localStorage.setItem("GYM_CLASSES", JSON.stringify(this.classes));
+  toJSON() {
+    return this.books;
   }
 
-  addClass(id, name, coach, capacity) {
-    this.classes.push({
+  addBook(id, title, author) {
+    this.books.push({
       id,
-      name,
-      coach,
-      capacity: Number(capacity) || 0,
-      spotsTaken: 0,
+      title,
+      author,
+      available: true,
+      borrowerId: null,
+      dueDate: null,
     });
   }
 
   findById(id) {
-    return this.classes.find((c) => c.id === id);
+    return this.books.find((b) => b.id === id);
   }
 
-  all() {
-    return this.classes.slice();
+  search(term) {
+    const t = term.trim().toLowerCase();
+    if (!t) return this.books.slice();
+    return this.books.filter(
+      (b) =>
+        b.id.toLowerCase().includes(t) ||
+        b.title.toLowerCase().includes(t) ||
+        (b.author || "").toLowerCase().includes(t)
+    );
   }
 }
 
@@ -46,15 +54,15 @@ class MemberRepo {
 
   load() {
     try {
-      const data = JSON.parse(localStorage.getItem("GYM_MEMBERS") || "[]");
-      this.members = data;
+      const data = JSON.parse(localStorage.getItem("LIB_DATA") || "{}");
+      this.members = data.members || [];
     } catch (e) {
       this.members = [];
     }
   }
 
-  save() {
-    localStorage.setItem("GYM_MEMBERS", JSON.stringify(this.members));
+  toJSON() {
+    return this.members;
   }
 
   addMember(id, name, email) {
@@ -62,17 +70,13 @@ class MemberRepo {
       id,
       name,
       email,
-      active: true,
       fees: 0,
+      active: true,
     });
   }
 
   findById(id) {
     return this.members.find((m) => m.id === id);
-  }
-
-  all() {
-    return this.members.slice();
   }
 }
 
@@ -82,7 +86,7 @@ class MemberRepo {
 
 class PaymentProvider {
   charge(amount, card) {
-    console.log(`[FakePay] Charging $${amount} to card ${card}`);
+    console.log(`[Payment] Charging $${amount} to ${card}`);
     return { ok: true };
   }
 }
@@ -96,54 +100,54 @@ class Mailer {
 
 class Logger {
   constructor() {
-    this.log = [];
+    this.entries = [];
   }
 
   add(msg) {
     const stamp = new Date().toLocaleTimeString();
-    const entry = `${stamp} – ${msg}`;
-    this.log.push(entry);
-    if (this.log.length > 50) {
-      this.log.shift();
+    const line = `${stamp} – ${msg}`;
+    this.entries.push(line);
+    if (this.entries.length > 50) {
+      this.entries.shift();
     }
-    console.log("[LOG]", entry);
+    console.log("[LOG]", line);
   }
 
-  recent(count = 5) {
-    return this.log.slice(-count);
+  recent(count = 3) {
+    return this.entries.slice(-count);
   }
 }
 
 // =========================
-// Domain service
+// Domain service (rules only)
 // =========================
 
-class GymService {
-  constructor(classRepo, memberRepo, payment, mailer, logger) {
-    this.classes = classRepo;
+class LibraryService {
+  constructor(bookRepo, memberRepo, paymentProvider, mailer, logger) {
+    this.books = bookRepo;
     this.members = memberRepo;
-    this.payment = payment;
+    this.payment = paymentProvider;
     this.mailer = mailer;
     this.logger = logger;
   }
 
-  addClass(id, name, coach, capacity) {
-    if (!id || !name) {
-      throw new Error("Class ID and name are required.");
+  addBook(id, title, author) {
+    if (!id || !title) {
+      throw new Error("Book ID and title are required.");
     }
-    if (this.classes.findById(id)) {
-      throw new Error(`Class with ID ${id} already exists.`);
+    if (this.books.findById(id)) {
+      throw new Error(`Book with ID ${id} already exists.`);
     }
-    this.classes.addClass(id, name, coach || "TBD", capacity || 0);
-    this.logger.add(`Class added: ${name} (${id})`);
+    this.books.addBook(id, title, author || "Unknown");
+    this.logger.add(`Book added: ${title} (${id})`);
   }
 
   registerMember(id, name, email) {
     if (!id || !name || !email) {
-      throw new Error("Member ID, name and email are required.");
+      throw new Error("Member ID, name, and email are required.");
     }
     if (!email.includes("@")) {
-      throw new Error("Invalid email format.");
+      throw new Error("Invalid email address.");
     }
     if (this.members.findById(id)) {
       throw new Error(`Member with ID ${id} already exists.`);
@@ -151,117 +155,111 @@ class GymService {
     this.members.addMember(id, name, email);
     this.mailer.send(
       email,
-      "Welcome to the Gym",
-      `Hello ${name}, your member id is ${id}.`
+      "Welcome to the Library",
+      `Hello ${name}, your member ID is ${id}.`
     );
     this.logger.add(`Member registered: ${name} (${id})`);
   }
 
-  bookClass(classId, memberId, card = "1111-1111-1111-1111") {
-    const cls = this.classes.findById(classId);
-    if (!cls) {
-      throw new Error("Class not found.");
+  checkoutBook(bookId, memberId, days = 14, card = "1111-1111") {
+    const book = this.books.findById(bookId);
+    if (!book) throw new Error("Book not found.");
+
+    if (!book.available) {
+      throw new Error("Book is already checked out.");
     }
 
     const member = this.members.findById(memberId);
-    if (!member) {
-      throw new Error("Member not found.");
+    if (!member) throw new Error("Member not found.");
+    if (!member.active) throw new Error("Member is not active.");
+
+    let fee = 0;
+    if (days > 14) {
+      fee = (days - 14) * 0.5;
     }
 
-    if (!member.active) {
-      throw new Error("Member is not active.");
+    if (fee > 0) {
+      const res = this.payment.charge(fee, card);
+      if (!res.ok) throw new Error("Payment failed.");
+      member.fees += fee;
     }
 
-    if (cls.spotsTaken >= cls.capacity) {
-      throw new Error("Class is full.");
-    }
-
-    const fee = 10; // flat fee per booking
-
-    const res = this.payment.charge(fee, card);
-    if (!res.ok) {
-      throw new Error("Payment failed.");
-    }
-
-    member.fees += fee;
-    cls.spotsTaken += 1;
+    const due = new Date();
+    due.setDate(due.getDate() + days);
+    book.available = false;
+    book.borrowerId = member.id;
+    book.dueDate = due.toISOString().slice(0, 10);
 
     this.mailer.send(
       member.email,
-      "Class booking confirmed",
-      `You booked ${cls.name} with ${cls.coach}. Fee: $${fee}.`
+      "Book checked out",
+      `You borrowed "${book.title}" for ${days} days. Fee: $${fee}.`
     );
-
     this.logger.add(
-      `Booking: member ${member.id} -> class ${cls.id}, total member fees now $${member.fees}`
+      `Checked out "${book.title}" to ${member.name} (days=${days}, fee=$${fee})`
     );
   }
 
-  searchClasses(term) {
-    const t = term.trim().toLowerCase();
-    if (!t) return this.classes.all();
-    return this.classes
-      .all()
-      .filter(
-        (c) =>
-          c.id.toLowerCase().includes(t) ||
-          c.name.toLowerCase().includes(t) ||
-          c.coach.toLowerCase().includes(t)
-      );
+  searchBooks(term) {
+    return this.books.search(term);
   }
 }
 
 // =========================
-// Controller / UI
+// UI controller (DOM only)
 // =========================
 
-class GymController {
-  constructor(service, classRepo, memberRepo, logger) {
+class LibraryController {
+  constructor(service, bookRepo, memberRepo, logger) {
     this.service = service;
-    this.classes = classRepo;
+    this.books = bookRepo;
     this.members = memberRepo;
     this.logger = logger;
   }
 
-  renderClasses(sel, filterTerm = "") {
+  renderInventory(sel, term = "") {
     const el = document.querySelector(sel);
     if (!el) return;
-
-    const classes = this.service.searchClasses(filterTerm);
+    const list = this.service.searchBooks(term);
 
     el.innerHTML =
-      "<h3>Class Schedule</h3>" +
+      "<h3>Inventory</h3>" +
       "<ul>" +
-      classes
-        .map(
-          (c) =>
-            `<li><strong>${c.name}</strong> (${c.id}) – Coach: ${c.coach} – ${c.spotsTaken}/${c.capacity} booked</li>`
-        )
+      list
+        .map((b) => {
+          const status = b.available
+            ? "Available"
+            : `Checked out to ${b.borrowerId} (due ${b.dueDate})`;
+          return `<li><strong>${b.id}</strong> – ${b.title} by ${b.author} (${status})</li>`;
+        })
         .join("") +
       "</ul>" +
       `<div class="muted">${this.logger.recent().join("<br>")}</div>`;
   }
 
-  renderMember(sel, memberId) {
+  renderMember(memberId, sel) {
     const el = document.querySelector(sel);
     if (!el) return;
 
-    const member = this.members.findById(memberId);
-    if (!member) {
+    const m = this.members.findById(memberId);
+    if (!m) {
       el.innerHTML = "<em>No member selected.</em>";
       return;
     }
 
     el.innerHTML = `
-      <h3>${member.name}</h3>
-      <p>${member.email}</p>
-      <p>Outstanding fees: $${member.fees}</p>
+      <h3>${m.name}</h3>
+      <p>${m.email}</p>
+      <p>Fees: $${m.fees}</p>
     `;
   }
 
   saveAll() {
-    this.classes.save();
-    this.members.save();
+    const all = {
+      books: this.books.toJSON(),
+      members: this.members.toJSON(),
+    };
+    localStorage.setItem("LIB_DATA", JSON.stringify(all));
   }
 }
 
@@ -270,111 +268,80 @@ class GymController {
 // =========================
 
 (function () {
-  const classes = new ClassRepo();
+  const books = new BookRepo();
   const members = new MemberRepo();
   const logger = new Logger();
   const payment = new PaymentProvider();
   const mailer = new Mailer();
 
-  classes.load();
+  books.load();
   members.load();
 
-  const service = new GymService(classes, members, payment, mailer, logger);
-  const ui = new GymController(service, classes, members, logger);
+  const service = new LibraryService(books, members, payment, mailer, logger);
+  const ui = new LibraryController(service, books, members, logger);
 
   const $ = (s) => document.querySelector(s);
 
-  // Add class
-  const addClassBtn = $("#addClassBtn");
-  if (addClassBtn) {
-    addClassBtn.onclick = () => {
-      try {
-        service.addClass(
-          $("#classId").value,
-          $("#className").value,
-          $("#classCoach").value,
-          $("#classCapacity").value
-        );
-        ui.saveAll();
-        ui.renderClasses("#schedule");
-        alert("Class added.");
-      } catch (err) {
-        alert(err.message);
-      }
-    };
-  }
-
-  // Register member
-  const addMemberBtn = $("#addMemberBtn");
-  if (addMemberBtn) {
-    addMemberBtn.onclick = () => {
-      try {
-        service.registerMember(
-          $("#memberId").value,
-          $("#memberName").value,
-          $("#memberEmail").value
-        );
-        ui.saveAll();
-        ui.renderMember("#memberInfo", $("#memberId").value);
-        alert("Member registered.");
-      } catch (err) {
-        alert(err.message);
-      }
-    };
-  }
-
-  // Book class
-  const bookBtn = $("#bookBtn");
-  if (bookBtn) {
-    bookBtn.onclick = () => {
-      try {
-        service.bookClass($("#bookClassId").value, $("#bookMemberId").value);
-        ui.saveAll();
-        ui.renderClasses("#schedule");
-        ui.renderMember("#memberInfo", $("#bookMemberId").value);
-        alert("Booking completed.");
-      } catch (err) {
-        alert(err.message);
-      }
-    };
-  }
-
-  // Search / filter classes
-  const searchInput = $("#search");
-  if (searchInput) {
-    searchInput.oninput = (e) => {
-      ui.renderClasses("#schedule", e.target.value);
-    };
-  }
-
-  // Seed button – add some example data
-  const seedBtn = $("#seedBtn");
-  if (seedBtn) {
-    seedBtn.onclick = () => {
-      if (classes.all().length === 0) {
-        service.addClass("c1", "Morning Cardio", "Ana", 10);
-        service.addClass("c2", "Strength Training", "Blerim", 8);
-      }
-      if (members.all().length === 0) {
-        service.registerMember("m1", "Ada", "ada@example.com");
-        service.registerMember("m2", "Linus", "linus@example.com");
-      }
+  $("#add").onclick = () => {
+    try {
+      service.addBook($("#id").value, $("#title").value, $("#author").value);
       ui.saveAll();
-      ui.renderClasses("#schedule");
-      alert("Seeded sample data.");
-    };
-  }
+      ui.renderInventory("#app");
+      alert("Book added.");
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
-  // Reset button – clear localStorage
-  const resetBtn = $("#resetBtn");
-  if (resetBtn) {
-    resetBtn.onclick = () => {
-      localStorage.removeItem("GYM_CLASSES");
-      localStorage.removeItem("GYM_MEMBERS");
-      location.reload();
-    };
-  }
+  $("#reg").onclick = () => {
+    try {
+      service.registerMember(
+        $("#mid").value,
+        $("#mname").value,
+        $("#memail").value
+      );
+      ui.saveAll();
+      ui.renderMember($("#mid").value, "#member");
+      alert("Member registered.");
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
-  // Initial render
-  ui.renderClasses("#schedule");
+  $("#checkout").onclick = () => {
+    try {
+      service.checkoutBook($("#bookId").value, $("#memberId").value, 21);
+      ui.saveAll();
+      ui.renderInventory("#app");
+      ui.renderMember($("#memberId").value, "#member");
+      alert("Book checked out.");
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  $("#search").oninput = (e) => {
+    ui.renderInventory("#app", e.target.value);
+  };
+
+  $("#seed").onclick = () => {
+    if (books.toJSON().length === 0) {
+      service.addBook("b1", "Clean Code", "Robert C. Martin");
+      service.addBook("b2", "Design Patterns", "GoF");
+    }
+    if (members.toJSON().length === 0) {
+      service.registerMember("m1", "Ada", "ada@example.com");
+      service.registerMember("m2", "Linus", "linus@example.com");
+    }
+    ui.saveAll();
+    ui.renderInventory("#app");
+    alert("Seeded.");
+  };
+
+  $("#reset").onclick = () => {
+    localStorage.removeItem("LIB_DATA");
+    location.reload();
+  };
+
+  ui.renderInventory("#app");
 })();
