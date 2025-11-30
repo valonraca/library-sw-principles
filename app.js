@@ -229,13 +229,22 @@ const Library = {
 },
 
 
-  registerMember(id, name, email) {
-    if (!email || email.indexOf('@') < 0) { alert('Invalid email'); return; }
-    this.members.push({ id, name, email, fees: 0 });
-    this._log(`Member registered: ${name}`);
-    this.mailer.send(email, 'Welcome', `Hi ${name}, your id is ${id}`);
-    this.save();
-  },
+ registerMember(id, name, email) {
+  const result = this._service.registerMember(id, name, email);
+
+  if (!result.ok) {
+    alert(result.error);
+    return;
+  }
+
+  const data = this._storage.load();
+  this.members = data.members || [];
+
+  this._log(`Member registered: ${name}`);
+  this.renderInventory('#app');
+},
+
+
   checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
     const b = this.books.find(x => x.id === bookId);
     const m = this.members.find(x => x.id === memberId);
