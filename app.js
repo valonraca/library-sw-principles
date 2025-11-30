@@ -245,27 +245,23 @@ const Library = {
 },
 
 
-  checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
-    const b = this.books.find(x => x.id === bookId);
-    const m = this.members.find(x => x.id === memberId);
-    if (!b) return alert('Book not found');
-    if (!m) return alert('Member not found');
-    if (!b.available) return alert('Book already checked out');
+ checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
+  const result = this._service.checkoutBook(bookId, memberId, days, card);
 
-    let fee = 0; // Nonsense rule baked in here (policy + payment together)
-    if (days > 14) fee = (days - 14) * 0.5;
-    if (fee > 0) {
-      const res = this.paymentProvider.charge(fee, card);
-      if (!res.ok) return alert('Payment failed');
-      m.fees += fee; // double-duty meaning as outstanding + history
-    }
-    b.available = false;
-    this._log(`Checked out ${b.title} to ${m.name} for ${days} days (fee=$${fee}).`);
-    this.mailer.send(m.email, 'Checkout', `You borrowed ${b.title}. Fee: $${fee}`);
-    this.save();
-    this.renderInventory('#app');
-    this.renderMember(m.id, '#member');
-  },
+  if (!result.ok) {
+    alert(result.error);
+    return;
+  }
+
+  const data = this._storage.load();
+  this.books = data.books || [];
+  this.members = data.members || [];
+
+  const fee = result.fee || 0;
+  this._log(`Checkout completed for member ${memberId}, fee: $${fee}`);
+  this.renderInventory('#app');
+  this.renderMember(memberId, '#member');
+},
 
   search(term) {
     const t = term.trim().toLowerCase();
