@@ -1,4 +1,182 @@
+class LocalStorageLibraryStorage {
+  constructor(storageKey = 'LIB_DATA') {
+    this.storageKey = storageKey;
+  }
+
+  load() {
+    try {
+      return JSON.parse(localStorage.getItem(this.storageKey) || '{}');
+    } catch (e) {
+      console.error('Failed to parse storage', e);
+      return {};
+    }
+  }
+
+  save(data) {
+    localStorage.setItem(this.storageKey, JSON.stringify(data));
+  }
+
+  reset() {
+    localStorage.removeItem(this.storageKey);
+  }
+}
+
+class LocalStorageBookRepo {
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  getAll() {
+    const data = this.storage.load();
+    return data.books || [];
+  }
+
+  saveAll(books) {
+    const data = this.storage.load();
+    data.books = books;
+    this.storage.save(data);
+  }
+}
+
+class LocalStorageMemberRepo {
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  getAll() {
+    const data = this.storage.load();
+    return data.members || [];
+  }
+
+  saveAll(members) {
+    const data = this.storage.load();
+    data.members = members;
+    this.storage.save(data);
+  }
+}
+
+const paymentPort = {
+  charge(amount, card) {
+    console.log("[Payment] charging", amount, "to card", card);
+    return { ok: true };
+  }
+};
+
+const notifierPort = {
+  send(to, subject, body) {
+    console.log("[Email]", to, subject, body);
+    return true;
+  }
+};
+
+const loggerPort = {
+  log(msg) {
+    const stamp = new Date().toLocaleTimeString();
+    console.log("[LOG]", `${stamp} — ${msg}`);
+  }
+};
+
+
+
+class LibraryService {
+  constructor({ bookRepo, memberRepo, payment, notifier, logger }) {
+    this.bookRepo = bookRepo;
+    this.memberRepo = memberRepo;
+    this.payment = payment;
+    this.notifier = notifier;
+    this.logger = logger || { log: () => {} };
+  }
+
+  addBook(id, title, author) {
+    if (!id || !title || !author) {
+      return { ok: false, error: "All fields are required." };
+    }
+
+    const books = this.bookRepo.getAll();
+    if (books.some(b => b.id === id)) {
+      return { ok: false, error: "Book ID already exists." };
+    }
+
+    books.push({ id, title, author, available: true });
+    this.bookRepo.saveAll(books);
+    this.logger.log(`Book added: ${title}`);
+
+    return { ok: true };
+  }
+
+  registerMember(id, name, email) {
+    if (!id || !name || !email) {
+      return { ok: false, error: "All fields are required." };
+    }
+
+    if (!email.includes("@")) {
+      return { ok: false, error: "Invalid email." };
+    }
+
+    const members = this.memberRepo.getAll();
+    if (members.some(m => m.id === id)) {
+      return { ok: false, error: "Member ID already exists." };
+    }
+
+    members.push({ id, name, email, fees: 0 });
+    this.memberRepo.saveAll(members);
+    this.logger.log(`Member registered: ${name}`);
+    this.notifier.send(email, "Welcome!", `Hello ${name}, your ID is ${id}.`);
+
+    return { ok: true };
+  }
+
+  checkoutBook(bookId, memberId, days = 14, card = "4111-1111") {
+    const books = this.bookRepo.getAll();
+    const members = this.memberRepo.getAll();
+
+    const book = books.find(b => b.id === bookId);
+    const member = members.find(m => m.id === memberId);
+
+    if (!book) return { ok: false, error: "Book not found." };
+    if (!member) return { ok: false, error: "Member not found." };
+    if (!book.available) return { ok: false, error: "Book already borrowed." };
+
+    let fee = 0;
+    if (days > 14) {
+      fee = (days - 14) * 0.5;
+      const result = this.payment.charge(fee, card);
+      if (!result.ok) return { ok: false, error: "Payment failed." };
+      member.fees += fee;
+    }
+
+    book.available = false;
+    this.bookRepo.saveAll(books);
+    this.memberRepo.saveAll(members);
+
+    this.logger.log(`Checkout: ${book.title} -> ${member.name}, fee: ${fee}`);
+    this.notifier.send(member.email, "Checkout", `Borrowed ${book.title}`);
+
+    return { ok: true, fee };
+  }
+
+  search(term) {
+    const t = term.trim().toLowerCase();
+    const books = this.bookRepo.getAll();
+    return books.filter(
+      b =>
+        b.title.toLowerCase().includes(t) ||
+        b.author.toLowerCase().includes(t) ||
+        b.id.toLowerCase().includes(t)
+    );
+  }
+}
+
+
+
+
 const Library = {
+   
+  _storage: new LocalStorageLibraryStorage(),
+  _bookRepo: null,
+  _memberRepo: null,
+  _service: null,
+
   books: [], // [{id, title, author, available}]
   members: [], // [{id, name, email, fees}]
   log: [],
@@ -35,42 +213,55 @@ const Library = {
     this._log('Saved data to localStorage.');
   },
 
-  // Domain operations (validation + policies + I/O + UI side-effects all jumbled)
-  addBook(id, title, author) {
-    if (!id || !title) { alert('Missing fields'); return; }
-    this.books.push({ id, title, author, available: true });
-    this._log(`Book added: ${title}`);
-    this.save();
-    this.renderInventory('#app');
-  },
-  registerMember(id, name, email) {
-    if (!email || email.indexOf('@') < 0) { alert('Invalid email'); return; }
-    this.members.push({ id, name, email, fees: 0 });
-    this._log(`Member registered: ${name}`);
-    this.mailer.send(email, 'Welcome', `Hi ${name}, your id is ${id}`);
-    this.save();
-  },
-  checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
-    const b = this.books.find(x => x.id === bookId);
-    const m = this.members.find(x => x.id === memberId);
-    if (!b) return alert('Book not found');
-    if (!m) return alert('Member not found');
-    if (!b.available) return alert('Book already checked out');
+ addBook(id, title, author) {
+  const result = this._service.addBook(id, title, author);
 
-    let fee = 0; // Nonsense rule baked in here (policy + payment together)
-    if (days > 14) fee = (days - 14) * 0.5;
-    if (fee > 0) {
-      const res = this.paymentProvider.charge(fee, card);
-      if (!res.ok) return alert('Payment failed');
-      m.fees += fee; // double-duty meaning as outstanding + history
-    }
-    b.available = false;
-    this._log(`Checked out ${b.title} to ${m.name} for ${days} days (fee=$${fee}).`);
-    this.mailer.send(m.email, 'Checkout', `You borrowed ${b.title}. Fee: $${fee}`);
-    this.save();
-    this.renderInventory('#app');
-    this.renderMember(m.id, '#member');
-  },
+  if (!result.ok) {
+    alert(result.error);
+    return;
+  }
+
+  const data = this._storage.load();
+  this.books = data.books || [];
+
+  this._log(`Book added: ${title}`);
+  this.renderInventory('#app');
+},
+
+
+ registerMember(id, name, email) {
+  const result = this._service.registerMember(id, name, email);
+
+  if (!result.ok) {
+    alert(result.error);
+    return;
+  }
+
+  const data = this._storage.load();
+  this.members = data.members || [];
+
+  this._log(`Member registered: ${name}`);
+  this.renderInventory('#app');
+},
+
+
+ checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
+  const result = this._service.checkoutBook(bookId, memberId, days, card);
+
+  if (!result.ok) {
+    alert(result.error);
+    return;
+  }
+
+  const data = this._storage.load();
+  this.books = data.books || [];
+  this.members = data.members || [];
+
+  const fee = result.fee || 0;
+  this._log(`Checkout completed for member ${memberId}, fee: $${fee}`);
+  this.renderInventory('#app');
+  this.renderMember(memberId, '#member');
+},
 
   search(term) {
     const t = term.trim().toLowerCase();
@@ -103,6 +294,17 @@ const Library = {
 
 // --- Minimal wiring (STILL tightly coupled) ---
 (function bootstrap(){
+
+  Library._bookRepo = new LocalStorageBookRepo(Library._storage);
+  Library._memberRepo = new LocalStorageMemberRepo(Library._storage);
+  Library._service = new LibraryService({
+    bookRepo: Library._bookRepo,
+    memberRepo: Library._memberRepo,
+    payment: paymentPort,
+    notifier: notifierPort,
+    logger: loggerPort
+  });
+
   Library.load();
 
   const $ = sel => document.querySelector(sel);
