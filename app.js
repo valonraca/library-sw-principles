@@ -58,6 +58,94 @@ class LocalStorageMemberRepo {
 }
 
 
+// ===== Domain Layer (SRP/OCP) =====
+
+class LibraryService {
+  constructor(bookRepo, memberRepo, paymentProvider, notifier, logger) {
+    this.bookRepo = bookRepo;
+    this.memberRepo = memberRepo;
+    this.paymentProvider = paymentProvider;
+    this.notifier = notifier;
+    this.logger = logger;
+  }
+
+  load() {
+    this.books = this.bookRepo.getAll();
+    this.members = this.memberRepo.getAll();
+    this.logger("Loaded data from repos");
+  }
+
+  addBook(id, title, author) {
+    if (!id || !title) {
+      throw new Error("Missing fields");
+    }
+
+    const books = this.bookRepo.getAll();
+    books.push({ id, title, author, available: true });
+    this.bookRepo.saveAll(books);
+
+    this.logger(`Book added: ${title}`);
+    return books;
+  }
+
+  registerMember(id, name, email) {
+    if (!email || !email.includes("@")) {
+      throw new Error("Invalid email");
+    }
+
+    const members = this.memberRepo.getAll();
+    members.push({ id, name, email, fees: 0 });
+    this.memberRepo.saveAll(members);
+
+    this.notifier.send(email, "Welcome", `Hi ${name}, your id is ${id}`);
+    this.logger(`Member registered: ${name}`);
+
+    return members;
+  }
+
+  checkoutBook(bookId, memberId, days = 21, card = "4111-1111") {
+      const books = this.bookRepo.getAll();
+      const members = this.memberRepo.getAll();
+
+      const b = books.find(x => x.id === bookId);
+      const m = members.find(x => x.id === memberId);
+
+      if (!b) throw new Error("Book not found");
+      if (!m) throw new Error("Member not found");
+      if (!b.available) throw new Error("Book already checked out");
+
+      let fee = 0;
+      if (days > 14) fee = (days - 14) * 0.5;
+
+      if (fee > 0) {
+        const res = this.paymentProvider.charge(fee, card);
+        if (!res.ok) throw new Error("Payment failed");
+
+        m.fees += fee;
+      }
+
+      b.available = false;
+
+      this.bookRepo.saveAll(books);
+      this.memberRepo.saveAll(members);
+
+      this.notifier.send(m.email, "Checkout", `You borrowed ${b.title}. Fee: $${fee}`);
+      this.logger(`Checked out ${b.title} to ${m.name}`);
+
+      return { books, member: m };
+  }
+
+  search(term) {
+    const t = term.trim().toLowerCase();
+    const books = this.bookRepo.getAll();
+    return books.filter(b =>
+      b.title.toLowerCase().includes(t) ||
+      b.author.toLowerCase().includes(t)
+    );
+  }
+}
+
+
 
 const Library = {
   books: [], // [{id, title, author, available}]
