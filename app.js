@@ -1,113 +1,174 @@
-const Library = {
-  books: [], // [{id, title, author, available}]
-  members: [], // [{id, name, email, fees}]
-  log: [],
-
-
-
-  // Persistence mixed with domain (uses localStorage to keep it simple)
-  load() {
-    try {
-      const data = JSON.parse(localStorage.getItem('LIB_DATA') || '{}');
-      this.books = data.books || [];
-      this.members = data.members || [];
-      this._log(`Loaded ${this.books.length} books & ${this.members.length} members from localStorage.`);
-    } catch (e) {
-      this._log('Load failed. Resetting.');
-      this.books = []; this.members = [];
-    }
-    this.renderInventory('#app');
-  },
-  save() {
-    localStorage.setItem('LIB_DATA', JSON.stringify({ books: this.books, members: this.members }));
-    this._log('Saved data to localStorage.');
-  },
-
-  // Domain operations (validation + policies + I/O + UI side-effects all jumbled)
-  addBook(id, title, author) {
-    if (!id || !title) { alert('Missing fields'); return; }
-    this.books.push({ id, title, author, available: true });
-    this._log(`Book added: ${title}`);
-    this.save();
-    this.renderInventory('#app');
-  },
-  registerMember(id, name, email) {
-    if (!email || email.indexOf('@') < 0) { alert('Invalid email'); return; }
-    this.members.push({ id, name, email, fees: 0 });
-    this._log(`Member registered: ${name}`);
-    this.mailer.send(email, 'Welcome', `Hi ${name}, your id is ${id}`);
-    this.save();
-  },
-  checkoutBook(bookId, memberId, days = 21, card = '4111-1111') {
-    const b = this.books.find(x => x.id === bookId);
-    const m = this.members.find(x => x.id === memberId);
-    if (!b) return alert('Book not found');
-    if (!m) return alert('Member not found');
-    if (!b.available) return alert('Book already checked out');
-
-    let fee = 0; // Nonsense rule baked in here (policy + payment together)
-    if (days > 14) fee = (days - 14) * 0.5;
-    if (fee > 0) {
-      const res = this.paymentProvider.charge(fee, card);
-      if (!res.ok) return alert('Payment failed');
-      m.fees += fee; // double-duty meaning as outstanding + history
-    }
-    b.available = false;
-    this._log(`Checked out ${b.title} to ${m.name} for ${days} days (fee=$${fee}).`);
-    this.mailer.send(m.email, 'Checkout', `You borrowed ${b.title}. Fee: $${fee}`);
-    this.save();
-    this.renderInventory('#app');
-    this.renderMember(m.id, '#member');
-  },
-
-  search(term) {
-    const t = term.trim().toLowerCase();
-    const res = this.books.filter(b => b.title.toLowerCase().includes(t) || b.author.toLowerCase().includes(t));
-    this._log(`Search '${term}' → ${res.length} results.`);
-    this.renderInventory('#app');
-    return res;
-  },
-
-  // UI rendering tightly coupled
-  renderInventory(sel) {
-    const el = document.querySelector(sel);
-    el.innerHTML = `<h3>Inventory</h3>` +
-      `<ul>` + this.books.map(b => `<li><strong>${b.available ? '<span class="ok">✓</span>' : '<span class="no">✗</span>'}</strong> ${b.id}: ${b.title} — ${b.author}</li>`).join('') + `</ul>` +
-      `<div class="muted">${this.log.slice(-3).join('<br/>')}</div>`;
-  },
-  renderMember(memberId, sel) {
-    const m = this.members.find(x => x.id === memberId);
-    const el = document.querySelector(sel);
-    el.innerHTML = m ? `<h3>${m.name}</h3><p>${m.email}</p><p>Fees: $${m.fees}</p>` : '<em>No member selected.</em>';
-  },
-
-  _log(msg) {
-    const stamp = new Date().toLocaleTimeString();
-    this.log.push(`${stamp} — ${msg}`);
-    if (this.log.length > 50) this.log.shift();
-    console.log('[LOG]', msg);
+// models
+class Book {
+  constructor(id, title, author, year) {
+    this.id = id;
+    this.title = title;
+    this.author = author;
+    this.year = year;
+    this.isBorrowed = false;
+    this.borrowedBy = null;
   }
-};
+}
 
-// --- Minimal wiring (STILL tightly coupled) ---
-(function bootstrap(){
-  Library.load();
+class Member {
+  constructor(id, name) {
+    this.id = id;
+    this.name = name;
+  }
+}
 
-  const $ = sel => document.querySelector(sel);
-  $('#add').onclick = () => Library.addBook($('#id').value, $('#title').value, $('#author').value);
-  $('#reg').onclick = () => Library.registerMember($('#mid').value, $('#mname').value, $('#memail').value);
-  $('#checkout').onclick = () => Library.checkoutBook($('#bookId').value, $('#memberId').value);
-  $('#search').oninput = e => Library.search(e.target.value);
-  $('#seed').onclick = () => {
-    if (Library.books.length === 0) {
-      Library.addBook('b1', 'Clean Code', 'Robert C. Martin');
-      Library.addBook('b2', 'Design Patterns', 'GoF');
-    }
-    if (Library.members.length === 0) {
-      Library.registerMember('m1', 'Ada', 'ada@example.com');
-      Library.registerMember('m2', 'Linus', 'linus@example.com');
-    }
-    alert('Seeded.');
-  };
-  $('#reset').onclick = () => { localStorage.removeItem('LIB_DATA'); location.reload(); };
-})();
+// storage adapter (OCP)
+class StorageAdapter {
+  load(key) {
+    throw new Error("load() not implemented");
+  }
+
+  save(key, value) {
+    throw new Error("save() not implemented");
+  }
+}
+
+class LocalStorageAdapter extends StorageAdapter {
+  load(key) {
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
+  }
+
+  save(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+}
+
+// repositories (SRP)
+class BookRepository {
+  constructor(storage) {
+    this.storage = storage;
+    this.key = "books";
+    this.books = this.storage.load(this.key);
+  }
+
+  add(book) {
+    this.books.push(book);
+    this._save();
+  }
+
+  getAll() {
+    return this.books;
+  }
+
+  getById(id) {
+    return this.books.find((b) => b.id === id);
+  }
+
+  update() {
+    this._save();
+  }
+
+  _save() {
+    this.storage.save(this.key, this.books);
+  }
+}
+
+class MemberRepository {
+  constructor(storage) {
+    this.storage = storage;
+    this.key = "members";
+    this.members = this.storage.load(this.key);
+  }
+
+  add(member) {
+    this.members.push(member);
+    this._save();
+  }
+
+  getAll() {
+    return this.members;
+  }
+
+  getById(id) {
+    return this.members.find((m) => m.id === id);
+  }
+
+  _save() {
+    this.storage.save(this.key, this.members);
+  }
+}
+
+// library service (business logic)
+class LibraryService {
+  constructor(bookRepo, memberRepo) {
+    this.bookRepo = bookRepo;
+    this.memberRepo = memberRepo;
+  }
+
+  addBook(title, author, year) {
+    const id = Date.now();
+    const book = new Book(id, title, author, year);
+    this.bookRepo.add(book);
+    return book;
+  }
+
+  addMember(name) {
+    const id = Date.now();
+    const member = new Member(id, name);
+    this.memberRepo.add(member);
+    return member;
+  }
+
+  borrowBook(bookId, memberId) {
+    const book = this.bookRepo.getById(bookId);
+    const member = this.memberRepo.getById(memberId);
+
+    if (!book) return "Book not found.";
+    if (!member) return "Member not found.";
+    if (book.isBorrowed) return "Book is already borrowed.";
+
+    book.isBorrowed = true;
+    book.borrowedBy = member.id;
+
+    this.bookRepo.update();
+    return `Book borrowed by ${member.name}`;
+  }
+
+  returnBook(bookId) {
+    const book = this.bookRepo.getById(bookId);
+
+    if (!book) return "Book not found.";
+    if (!book.isBorrowed) return "Book is not borrowed.";
+
+    book.isBorrowed = false;
+    book.borrowedBy = null;
+
+    this.bookRepo.update();
+    return "Book returned successfully";
+  }
+
+  searchBooks(keyword) {
+    const term = keyword.toLowerCase();
+    return this.bookRepo
+      .getAll()
+      .filter(
+        (b) =>
+          b.title.toLowerCase().includes(term) ||
+          b.author.toLowerCase().includes(term)
+      );
+  }
+
+  listBorrowedBooks() {
+    return this.bookRepo.getAll().filter((b) => b.isBorrowed);
+  }
+
+  listAvailableBooks() {
+    return this.bookRepo.getAll().filter((b) => !b.isBorrowed);
+  }
+}
+
+// initialisation
+const storage = new LocalStorageAdapter();
+const bookRepo = new BookRepository(storage);
+const memberRepo = new MemberRepository(storage);
+
+const library = new LibraryService(bookRepo, memberRepo);
+
+// Export for testing or console use
+window.library = library;
