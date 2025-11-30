@@ -1,3 +1,64 @@
+// ===== Storage + Repository Layer =====
+
+class LocalStorageLibraryStorage {
+  constructor(storageKey = 'LIB_DATA') {
+    this.storageKey = storageKey;
+  }
+
+  load() {
+    try {
+      return JSON.parse(localStorage.getItem(this.storageKey) || '{}');
+    } catch (e) {
+      console.error('Failed to parse storage', e);
+      return {};
+    }
+  }
+
+  save(data) {
+    localStorage.setItem(this.storageKey, JSON.stringify(data));
+  }
+
+  reset() {
+    localStorage.removeItem(this.storageKey);
+  }
+}
+
+class LocalStorageBookRepo {
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  getAll() {
+    const data = this.storage.load();
+    return data.books || [];
+  }
+
+  saveAll(books) {
+    const data = this.storage.load();
+    data.books = books;
+    this.storage.save(data);
+  }
+}
+
+class LocalStorageMemberRepo {
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  getAll() {
+    const data = this.storage.load();
+    return data.members || [];
+  }
+
+  saveAll(members) {
+    const data = this.storage.load();
+    data.members = members;
+    this.storage.save(data);
+  }
+}
+
+
+
 const Library = {
   books: [], // [{id, title, author, available}]
   members: [], // [{id, name, email, fees}]
