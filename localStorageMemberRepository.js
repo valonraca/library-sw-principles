@@ -33,4 +33,18 @@ export class LocalStorageMemberRepository {
     else this.members.push(member);
     this._commit();
   }
+
+  update(member) {
+    const idx = this.members.findIndex(m => m.id === member.id);
+    if (idx >= 0) this.members[idx] = member;
+    else this.members.push(member);
+    this._commit();
+  }
+
+  clear() {
+    this.members = [];
+    const payload = JSON.parse(localStorage.getItem(this.key) || '{}');
+    payload.members = [];
+    localStorage.setItem(this.key, JSON.stringify(payload));
+  }
 }

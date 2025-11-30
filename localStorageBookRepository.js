@@ -33,4 +33,26 @@ export class LocalStorageBookRepository {
     else this.books.push(book);
     this._commit();
   }
+
+  update(book) {
+    const idx = this.books.findIndex(b => b.id === book.id);
+    if (idx >= 0) this.books[idx] = book;
+    else this.books.push(book);
+    this._commit();
+  }
+
+  search(term) {
+    const t = term.toLowerCase();
+    return this.books.filter(b =>
+      b.title.toLowerCase().includes(t) ||
+      b.author.toLowerCase().includes(t)
+    );
+  }
+
+  clear() {
+    this.books = [];
+    const payload = JSON.parse(localStorage.getItem(this.key) || '{}');
+    payload.books = [];
+    localStorage.setItem(this.key, JSON.stringify(payload));
+  }
 }
