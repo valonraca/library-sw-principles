@@ -1,3 +1,20 @@
+// --- New Logger for SRP ---
+const Logger = {
+  log(msg) {
+    const stamp = new Date().toLocaleTimeString();
+    console.log(`[LOG] ${stamp} — ${msg}`);
+  }
+};
+
+// --- New Search Strategy for OCP ---
+const SimpleSearch = {
+  search(books, term) {
+    const t = term.trim().toLowerCase();
+    return books.filter(b => b.title.toLowerCase().includes(t) || b.author.toLowerCase().includes(t));
+  }
+};
+
+// --- Library Object ---
 const Library = {
   books: [], // [{id, title, author, available}]
   members: [], // [{id, name, email, fees}]
@@ -17,36 +34,36 @@ const Library = {
     }
   },
 
-  // Persistence mixed with domain (uses localStorage to keep it simple)
+  // Persistence mixed with domain
   load() {
     try {
       const data = JSON.parse(localStorage.getItem('LIB_DATA') || '{}');
       this.books = data.books || [];
       this.members = data.members || [];
-      this._log(`Loaded ${this.books.length} books & ${this.members.length} members from localStorage.`);
+      Logger.log(`Loaded ${this.books.length} books & ${this.members.length} members from localStorage.`);
     } catch (e) {
-      this._log('Load failed. Resetting.');
+      Logger.log('Load failed. Resetting.');
       this.books = []; this.members = [];
     }
     this.renderInventory('#app');
   },
   save() {
     localStorage.setItem('LIB_DATA', JSON.stringify({ books: this.books, members: this.members }));
-    this._log('Saved data to localStorage.');
+    Logger.log('Saved data to localStorage.');
   },
 
-  // Domain operations (validation + policies + I/O + UI side-effects all jumbled)
+  // Domain operations
   addBook(id, title, author) {
     if (!id || !title) { alert('Missing fields'); return; }
     this.books.push({ id, title, author, available: true });
-    this._log(`Book added: ${title}`);
+    Logger.log(`Book added: ${title}`);
     this.save();
     this.renderInventory('#app');
   },
   registerMember(id, name, email) {
     if (!email || email.indexOf('@') < 0) { alert('Invalid email'); return; }
     this.members.push({ id, name, email, fees: 0 });
-    this._log(`Member registered: ${name}`);
+    Logger.log(`Member registered: ${name}`);
     this.mailer.send(email, 'Welcome', `Hi ${name}, your id is ${id}`);
     this.save();
   },
@@ -57,30 +74,30 @@ const Library = {
     if (!m) return alert('Member not found');
     if (!b.available) return alert('Book already checked out');
 
-    let fee = 0; // Nonsense rule baked in here (policy + payment together)
+    let fee = 0;
     if (days > 14) fee = (days - 14) * 0.5;
     if (fee > 0) {
       const res = this.paymentProvider.charge(fee, card);
       if (!res.ok) return alert('Payment failed');
-      m.fees += fee; // double-duty meaning as outstanding + history
+      m.fees += fee;
     }
     b.available = false;
-    this._log(`Checked out ${b.title} to ${m.name} for ${days} days (fee=$${fee}).`);
+    Logger.log(`Checked out ${b.title} to ${m.name} for ${days} days (fee=$${fee}).`);
     this.mailer.send(m.email, 'Checkout', `You borrowed ${b.title}. Fee: $${fee}`);
     this.save();
     this.renderInventory('#app');
     this.renderMember(m.id, '#member');
   },
 
+  // Use search strategy (OCP)
   search(term) {
-    const t = term.trim().toLowerCase();
-    const res = this.books.filter(b => b.title.toLowerCase().includes(t) || b.author.toLowerCase().includes(t));
-    this._log(`Search '${term}' → ${res.length} results.`);
+    const res = SimpleSearch.search(this.books, term);
+    Logger.log(`Search '${term}' → ${res.length} results.`);
     this.renderInventory('#app');
     return res;
   },
 
-  // UI rendering tightly coupled
+  // UI rendering
   renderInventory(sel) {
     const el = document.querySelector(sel);
     el.innerHTML = `<h3>Inventory</h3>` +
@@ -91,17 +108,10 @@ const Library = {
     const m = this.members.find(x => x.id === memberId);
     const el = document.querySelector(sel);
     el.innerHTML = m ? `<h3>${m.name}</h3><p>${m.email}</p><p>Fees: $${m.fees}</p>` : '<em>No member selected.</em>';
-  },
-
-  _log(msg) {
-    const stamp = new Date().toLocaleTimeString();
-    this.log.push(`${stamp} — ${msg}`);
-    if (this.log.length > 50) this.log.shift();
-    console.log('[LOG]', msg);
   }
 };
 
-// --- Minimal wiring (STILL tightly coupled) ---
+// --- Minimal wiring ---
 (function bootstrap(){
   Library.load();
 
