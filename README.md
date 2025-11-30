@@ -1,4 +1,7 @@
 # LibraryApp (Broken) — Refactor Exercise
+## Rationale
+
+The original Library implementation violated several SOLID principles, mainly the Single Responsibility Principle (SRP) and the Open/Closed Principle (OCP). The Library object handled UI rendering, validation, storage, business logic, email notifications, and payment processing all in one place, making the code difficult to maintain and extend. By refactoring the app into smaller components—BookRepo, MemberRepo, and LibraryService—each part now has one clear responsibility, improving modularity and testability (SRP). Introducing dependency injection for the notifier and payment provider allows new implementations to be added without modifying existing core logic, ensuring the system is open for extension but closed for modification (OCP). The UI layer now delegates all business logic to the service, avoiding direct logic handling. The original code is preserved in app-original.js for comparison.
 
 **Goal:** Apply SRP (Single Responsibility Principle) and OCP (Open/Closed Principle) to this tiny browser-only app.
 You will refactor *one or two classes/modules* and submit **diffs + rationale**.
