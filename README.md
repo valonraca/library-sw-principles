@@ -1,35 +1,28 @@
-# LibraryApp (Broken) — Refactor Exercise
+# LibraryApp Refactor: Applying SRP, OCP, and DIP
 
-**Goal:** Apply SRP (Single Responsibility Principle) and OCP (Open/Closed Principle) to this tiny browser-only app.
-You will refactor *one or two classes/modules* and submit **diffs + rationale**.
+## Rationale
 
-## How to Run
-- Open `index.html` in a browser.
-  
-## What’s Intentionally Wrong (spot at least 4)
-- **God Object**: `Library` handles domain rules, persistence (localStorage), UI rendering (DOM), payments, and emails.
-- **Tight Coupling**: Payment and email are *hard-coded* inside `Library`.
-- **UI in Domain**: Domain methods call `render*` and `alert` directly.
-- **No Extension Points**: Changing payment/email requires editing `Library` (violates OCP).
-- **Global Mutable State**: Single `Library` object used everywhere.
+The original LibraryApp violated the Single Responsibility Principle by placing every concern—domain logic, UI rendering, storage, notifications, and payments—inside a single “god object.” This made the code tightly coupled, hard to extend, and difficult to test.
 
-## Your Task (minimum)
-1. **SRP Split**: Extract a `LibraryService` that contains only domain rules — no DOM, no `alert`, no storage.
-2. **OCP Ports**: Define tiny interfaces (plain JS objects) for `notifier` and `payment` and **inject** them.
-3. Storage access should happen via a `BookRepo` and `MemberRepo` abstraction (e.g., backed by localStorage).
+My refactor separates these responsibilities into **distinct files and modules**:
 
-## Deliverables
-- **Git diffs** (or a `patch` file) showing your changes.
-- A short **rationale** (200–400 words) explaining:
-  - What responsibilities you moved and why (SRP).
-  - Where/why you introduced extension points (OCP).
-  - How your design allows adding a new payment provider (or notifier) **without** changing `LibraryService`.
+- **BookRepo.js** and **MemberRepo.js**: handle persistence of books and members  
+- **Storage.js (LocalStorageAdapter)**: the only class that interacts with localStorage  
+- **LibraryService.js**: contains domain rules and business logic only  
+- **NotificationPort.js** and **PaymentPort.js**: abstractions for external services  
+- **FeePolicy.js**: encapsulates fee calculation logic, making rules pluggable  
+- **app.js**: serves as the application layer, wiring DOM events to the service  
+- **index.html**: loads each module separately, ensuring clear boundaries  
 
-## Acceptance Check
-- Domain rules run without touching the DOM.
-- Swapping `payment` or `notifier` requires changing only wiring, not domain logic.
-- Basic flows still work in the browser (add/register/checkout/search).
+### Principles Applied
 
-## Nice-to-have (optional)
-- Basic error objects instead of `alert`.
-- Unit-ish tests using plain functions in the console.
+- **SRP**: Each file has one clear responsibility. For example, `LibraryService` no longer touches the DOM or storage.  
+- **OCP**: Fee calculation is extracted into `FeePolicy`. New fee rules can be added without modifying `LibraryService`.  
+- **DIP**: `LibraryService` depends on injected abstractions (`Notifier`, `PaymentProvider`, `FeePolicy`) rather than concrete implementations.  
+
+### Benefits
+
+- Modular design with files that can be swapped or extended independently  
+- Easier to test — domain logic can be tested without UI or storage  
+- Extensible — new storage backends, fee policies, or notification methods can be added without changing core logic  
+- Clearer separation of concerns, aligned with SOLID and GRASP principles (Pure Fabrication, Indirection, Controller)  
